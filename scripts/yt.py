@@ -1,40 +1,32 @@
-from __future__ import unicode_literals
-import yt_dlp 
-import time
-from pathlib import Path
+from pytube import YouTube
+from pytube import Search
 
 
-class MyLogger(object):
-    def debug(self, msg):
-        pass
+def youtube_search_results(search: str) -> list:
+    s = Search(search)
 
-    def warning(self, msg):
-        pass
+    results = []
+    for i in s.results[:3]:
+        title_url = []
+        title_url.append(i.title)
+        title_url.append(i.watch_url)
+        results.append(title_url)
 
-    def error(self, msg):
-        print(msg)
-
-
-def my_hook(d):
-    if d['status'] == 'finished':
-        print('Done downloading, now converting ...')
+    return results
 
 
-ydl_opts = {
-    'format': 'bestaudio/best',
-    'logger': MyLogger(),
-    'outtmpl': 'streamfiles/%(title)s.%(ext)s',
-    'progress_hooks': [my_hook],
-}
-
-start = time.time()
+def title_from_url(url: str) -> str:
+    yt = YouTube(url)
+    return yt.title
 
 
-def downloader(url):
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    return Path(str(ydl_opts['outtmpl']))
+def download_audio(url: str, server, name) -> str:
+    yt = YouTube(url)
+    path = yt.streams.get_audio_only().download(output_path=
+                                                f"C:/Users/Ben/OneDrive/Documents/Programming/Pycharm/Rhythm/audio/{server}", filename=f"{name}.mp3")
+    return path
 
 
-end = time.time()
-print(end - start)
+def get_thumbnail_url(url: str) -> str:
+    yt = YouTube(url)
+    return yt.thumbnail_url

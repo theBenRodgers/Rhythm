@@ -7,24 +7,27 @@ class BonkaApp:
 
         self.bonka_chain = sqlite3.connect('storage/bonka_chain.db')
         self.cursor = self.bonka_chain.cursor()
-        print('DB Init')
+
+        table = """ CREATE TABLE IF NOT EXISTS accounts (
+                User_ID INT,
+                Balance INT
+                );"""
+
+        self.cursor.execute(table)
 
     def wallet_exists(self):
         self.cursor.execute("SELECT * FROM accounts WHERE User_ID = ?", (self.user,))
-        user_account = self.cursor.fetchone()[0]
+        user_account = self.cursor.fetchone()
 
-        if not user_account:
-            return False
-        else:
+        if user_account is not None:
             return True
+        else:
+            return False
 
     def create_wallet(self):
-        self.cursor.execute("INSERT INTO accounts (User_ID, Balance) VALUES (?, 0)", (self.user,))
+        self.cursor.execute("INSERT INTO accounts (User_ID, Balance) VALUES (?, 1000)", (self.user,))
 
         self.bonka_chain.commit()
-        self.bonka_chain.close()
-
-        print(f"Created account for ID {self.user}")
 
     def mint_bonkas(self, recipient, amount):
         self.cursor.execute("SELECT Balance FROM accounts WHERE User_ID = ?", (recipient,))
@@ -35,36 +38,26 @@ class BonkaApp:
         self.cursor.execute("UPDATE accounts SET Balance = ? WHERE User_ID = ? ", (user_bal, recipient))
 
         self.bonka_chain.commit()
-        self.bonka_chain.close()
 
     def destroy_bonkas(self, recipient, amount):
         self.cursor.execute("SELECT Balance FROM accounts WHERE User_ID = ?", (recipient,))
         user_bal = self.cursor.fetchone()[0]
-
-        if user_bal < amount:
-            return False
 
         user_bal -= amount
 
         self.cursor.execute("UPDATE accounts SET Balance = ? WHERE User_ID = ? ", (user_bal, recipient))
 
         self.bonka_chain.commit()
-        self.bonka_chain.close()
 
     def balance(self):
         self.cursor.execute("SELECT Balance FROM accounts WHERE User_ID = ?", (self.user,))
         balance = self.cursor.fetchone()[0]
-
-        self.bonka_chain.close()
 
         return balance
 
     def send_bonkas(self, recipient, amount):
         self.cursor.execute("SELECT Balance FROM accounts WHERE User_ID = ?", (self.user,))
         user_bal = self.cursor.fetchone()[0]
-
-        if user_bal < amount:
-            return False
 
         self.cursor.execute("SELECT Balance FROM accounts WHERE User_ID = ?", (recipient,))
         recipient_bal = self.cursor.fetchone()[0]
@@ -76,4 +69,18 @@ class BonkaApp:
         self.cursor.execute("UPDATE accounts SET Balance = ? WHERE User_ID = ? ", (recipient_bal, recipient))
 
         self.bonka_chain.commit()
+
+    def richest(self):
+        self.cursor.execute("SELECT * FROM accounts ORDER BY Balance DESC")
+        forbes = self.cursor.fetchmany(12)
+
+        return forbes
+
+    def economy(self):
+        self.cursor.execute("SELECT Balance FROM accounts")
+        economy = self.cursor.fetchall()
+
+        return economy
+
+    def close_app(self):
         self.bonka_chain.close()
