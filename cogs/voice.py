@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 from discord import FFmpegPCMAudio, PCMVolumeTransformer
 from scripts.yt import *
-from scripts.queue import *
+from scripts.musicqueue import *
 import os
 import datetime
 
@@ -49,54 +49,73 @@ class Voice(commands.Cog, name='Voice'):
     @commands.command(name='play', brief='Plays a song')
     async def play(self, ctx, *, prompt=""):
 
-        if prompt == "":
-            if not ctx.voice_client.is_playing():
-                serverq = Queue(ctx.voice_client.guild.id)
-                if not serverq.queue_exists():
-                    await ctx.send("Nothing in queue, pick a song for me to play")
+        if not hasattr(ctx, "auto_play"):
+            ctx.auto_play = False
 
-                if ctx.voice_client and len(ctx.voice_client.channel.members) == 1:  # If bot is only one in channel
-                    await ctx.guild.voice_client.disconnect()
-                    await ctx.send("Bot left due to inactivity")
-                    return
 
-                next_item = serverq.queue_next()
-                time_stamp = next_item[4]
-                url = next_item[2]
-                user = self.bot.get_user(next_item[3]).name
-                title = next_item[1]
 
-                path = download_audio(url, str(ctx.message.guild.id), str(ctx.author.id))
-                ctx.voice_client.play(discord.FFmpegPCMAudio(executable=r"C:\ffmpeg\bin\ffmpeg.exe", source=path))
-                ctx.voice_client.source = PCMVolumeTransformer(ctx.voice_client.source)
-
-                embed = discord.Embed(title="Now Playing", description=f"[{title}]({url})", color=0xE74C3C)
-                embed.set_thumbnail(url=get_thumbnail_url(url))
-                embed.set_footer(text=f"Added by {user}")
-                bot_msg = await ctx.send(embed=embed)
-
-                serverq.set_now_playing(time_stamp)
-
-                while ctx.voice_client.is_playing():
-                    await asyncio.sleep(.1)
-                os.remove(path)
-
-                serverq.queue_remove(time_stamp)
-
-                if serverq.queue_exists() and ctx.voice_client.is_connected():
-                    await ctx.invoke(self.bot.get_command("play"), prompt="from_queue")
-                    serverq.queue_close()
-                    return
-                else:
-                    await ctx.guild.voice_client.disconnect()
-                    await ctx.send("Nothing left to play. Bot left")
-                    serverq.queue_close()
-                return
-            else:
-                await ctx.send("Already playing!")
+        async def play_from_queue(guild):
+            bot_voice = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
+            serverq = MusicQueue(guild)
+            if not bot_voice:
+                serverq.close_queue()
                 return
 
-        bot_msg = None  # Sets variable to None to check if choice prompt was run
+            if not serverq.does_queue_exist():
+                await ctx.guild.voice_client.disconnect()
+                await ctx.send("Nothing left to play. Bot left")
+                serverq.close_queue()
+                return
+
+
+            next_item = serverq.get_next_song()
+            time_stamp = next_item[4]
+            url = next_item[2]
+            user = self.bot.get_user(next_item[3]).name
+            title = next_item[1]
+
+            path = download_audio(url, str(ctx.message.guild.id), str(ctx.author.id))
+            ctx.voice_client.play(discord.FFmpegPCMAudio(executable=r"C:\ffmpeg\bin\ffmpeg.exe", source=path))
+            ctx.voice_client.source = PCMVolumeTransformer(ctx.voice_client.source)
+
+            embed = discord.Embed(title="Now Playing", description=f"[{title}]({url})", color=0xE74C3C)
+            embed.set_thumbnail(url=get_thumbnail_url(url))
+            embed.set_footer(text=f"Added by {user}")
+            await ctx.send(embed=embed)
+
+            serverq.remove_now_playing()
+            serverq.update_now_playing(time_stamp)
+
+            while ctx.voice_client.is_playing():
+                await asyncio.sleep(.1)
+            os.remove(path)
+
+            serverq.remove_song(time_stamp)
+
+            if serverq.does_queue_exist() and ctx.voice_client.is_connected():
+                await ctx.invoke(self.bot.get_command("play"), auto_play=True)
+                serverq.close_queue()
+                return
+
+            if not serverq.does_queue_exist() and ctx.voice_client.is_connected():
+                await ctx.guild.voice_client.disconnect()
+                await ctx.send("Nothing left to play. Bot left")
+                serverq.close_queue()
+                return
+
+            serverq.close_queue()
+            return
+
+        # Runs if the command was invoked
+        if ctx.auto_play:
+            bot_voice = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
+            if not bot_voice:
+                return
+            if ctx.voice_client.is_playing():
+                return
+
+            await play_from_queue(ctx.voice_client.guild.id)
+
         user = ctx.author  # Get the user who sent the command
 
         if not user.voice:  # Check if the user is connected to a voice channel
@@ -110,7 +129,24 @@ class Voice(commands.Cog, name='Voice'):
             pass
         else:  # If the bot is in another voice channel, move it to the user's channel
             await ctx.guild.voice_client.move_to(channel)
-        time_stamp = datetime.datetime.now().timestamp()*100
+
+        serverq = MusicQueue(ctx.message.guild.id)
+
+        if prompt == "":
+            if ctx.voice_client.is_playing():
+                await ctx.send("Already playing!")
+                serverq.close_queue()
+                return
+            if not serverq.does_queue_exist():
+                await ctx.send("Nothing left to play, pick a song!")
+                serverq.close_queue()
+                return
+            serverq.close_queue()
+
+            await play_from_queue(ctx.message.guild.id)
+            return
+
+        time_stamp = datetime.datetime.now().timestamp() * 100
         time_stamp = int(round(time_stamp))
 
         prompt = prompt.strip()  # Removes any extra spaces
@@ -147,15 +183,17 @@ class Voice(commands.Cog, name='Voice'):
                 await bot_msg.delete()
                 await ctx.send("Choice timed out", delete_after=15)
                 return
+        else:
+            url = prompt
 
         title = title_from_url(url)
 
-        serverq = Queue(ctx.message.guild.id)
+        serverq = MusicQueue(ctx.message.guild.id)
 
         if ctx.voice_client.is_playing():  # Adds the song to the queue if the bot is already playing audio
-            to_add = (ctx.message.guild.id, title, url, ctx.author.id, time_stamp, int(0))
-            serverq.queue_add(to_add)
-            serverq.queue_close()
+            to_add = (ctx.message.guild.id, title, url, ctx.author.id, time_stamp, 0)
+            serverq.add_to_queue(to_add)
+            serverq.close_queue()
 
             await ctx.send(f"{title} has been added to the queue", delete_after=10)
 
@@ -163,17 +201,16 @@ class Voice(commands.Cog, name='Voice'):
                 await bot_msg.delete()
             return
 
-        to_add = (ctx.message.guild.id, title, url, ctx.author.id, time_stamp, int(1))
+        to_add = (ctx.message.guild.id, title, url, ctx.author.id, time_stamp, 1)
 
-        serverq.queue_add(to_add)
-        serverq.queue_close()
+        print(to_add)
+
+        serverq.add_to_queue(to_add)
+
 
         path = download_audio(url, str(ctx.message.guild.id), str(ctx.author.id))
         ctx.voice_client.play(discord.FFmpegPCMAudio(executable=r"C:\ffmpeg\bin\ffmpeg.exe", source=path))
         ctx.voice_client.source = PCMVolumeTransformer(ctx.voice_client.source)
-
-        if bot_msg:
-            await bot_msg.delete()
 
         embed = discord.Embed(title="Now Playing", description=f"[{title}]({url})", color=0xE74C3C)
         embed.set_thumbnail(url=get_thumbnail_url(url))
@@ -182,25 +219,17 @@ class Voice(commands.Cog, name='Voice'):
 
         while ctx.voice_client.is_playing():
             await asyncio.sleep(.1)
-        await bot_msg.delete()
         os.remove(path)
 
-        serverq = Queue(ctx.message.guild.id)
-        serverq.queue_clear(time_stamp)
+        serverq.remove_song(time_stamp)
+        serverq.close_queue()
 
-
-        if serverq.queue_exists() and ctx.voice_client.is_connected():
-            await ctx.invoke(self.bot.get_command("play"), prompt="")
-        if not serverq.queue_exists() and ctx.voice_client.is_connected():
-            await ctx.guild.voice_client.disconnect()
-            await ctx.send("Nothing left to play. Bot left")
-
-        serverq.queue_close()
+        await play_from_queue(ctx.message.guild.id)
 
     @commands.command(name='queue', brief='Shows the queue', )
     async def queue(self, ctx, page=1):
-        serverq = Queue(ctx.message.guild.id)
-        q = serverq.queue_all()
+        serverq = MusicQueue(ctx.message.guild.id)
+        q = serverq.get_all_songs()
 
         if not q:
             await ctx.send("Nothing queued")
@@ -239,13 +268,19 @@ class Voice(commands.Cog, name='Voice'):
 
         await ctx.send(embed=embed)
 
-        serverq.queue_close()
+        serverq.close_queue()
 
     @commands.command(name='song', brief='Shows the current song')
     async def song(self, ctx):
-        serverq = Queue(ctx.message.guild.id)
+        serverq = MusicQueue(ctx.message.guild.id)
 
-        playing = serverq.now_playing()
+        playing = serverq.get_now_playing()
+
+        serverq.close_queue()
+
+        if not playing:
+            await ctx.send("Nothing is playing")
+            return
 
         title = playing[1]
         url = playing[2]
@@ -258,13 +293,13 @@ class Voice(commands.Cog, name='Voice'):
 
     @commands.command(name='clearq', brief='Clears the queue')
     async def clearq(self, ctx):
-        serverq = Queue(ctx.message.guild.id)
+        serverq = MusicQueue(ctx.message.guild.id)
 
-        serverq.queue_clear()
+        serverq.clear_queue()
 
         await ctx.send("Queue has been cleared")
 
-        serverq.queue_close()
+        serverq.close_queue()
 
     @commands.command(name='skip', brief='Skips the song')
     async def skip(self, ctx):

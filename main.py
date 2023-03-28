@@ -5,8 +5,9 @@ import json
 
 INTENTS = discord.Intents.all()
 
-file = open('.idea/config.json', 'r')
+file = open('config.json', 'r')
 config = json.load(file)
+
 
 actDict = config['ACTIVITY']
 PREFIX = config['PREFIX']
