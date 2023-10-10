@@ -37,4 +37,4 @@ async def on_ready():
             await bot.load_extension(f'cogs.{cog[:-3]}')
 
 
-bot.run(TOKEN)
+bot.run("ODMwNTgzMzc4NzYzODQxNTQ2.G5WMmT.x5gds2TKAUYJLD2lHFemPx4E6oxzUfXHELP6Nw")

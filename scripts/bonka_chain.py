@@ -18,7 +18,7 @@ class BonkaApp:
             database="bonka_chain",
             port=database_connection["port"]
         )
-        self.cursor = self.bonka_chain.cursor()
+        self.cursor = self.bonka_chain.cursor(buffered=True)
 
         table = """ CREATE TABLE IF NOT EXISTS accounts (
                 User_ID BIGINT,

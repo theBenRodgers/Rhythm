@@ -18,7 +18,7 @@ class MusicQueue:
             database="queue",
             port=database_connection["port"]
         )
-        self.cursor = self.queue.cursor()
+        self.cursor = self.queue.cursor(buffered=True)
 
         table = """ CREATE TABLE IF NOT EXISTS queue (
         Guild BIGINT,

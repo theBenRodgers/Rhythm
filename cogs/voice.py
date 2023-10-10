@@ -76,7 +76,7 @@ class Voice(commands.Cog, name='Voice'):
 
             path = download_audio(url, str(ctx.message.guild.id), str(ctx.author.id))
             ctx.voice_client.play(discord.FFmpegPCMAudio(executable=r"C:\ffmpeg\bin\ffmpeg.exe", source=path))
-            ctx.voice_client.source = PCMVolumeTransformer(ctx.voice_client.source)
+            ctx.voice_client.source = PCMVolumeTransformer(ctx.voice_client.source, volume=.5)
 
             embed = discord.Embed(title="Now Playing", description=f"[{title}]({url})", color=0xE74C3C)
             embed.set_thumbnail(url=get_thumbnail_url(url))
@@ -210,7 +210,7 @@ class Voice(commands.Cog, name='Voice'):
 
         path = download_audio(url, str(ctx.message.guild.id), str(ctx.author.id))
         ctx.voice_client.play(discord.FFmpegPCMAudio(executable=r"C:\ffmpeg\bin\ffmpeg.exe", source=path))
-        ctx.voice_client.source = PCMVolumeTransformer(ctx.voice_client.source)
+        ctx.voice_client.source = PCMVolumeTransformer(ctx.voice_client.source, volume=.5)
 
         embed = discord.Embed(title="Now Playing", description=f"[{title}]({url})", color=0xE74C3C)
         embed.set_thumbnail(url=get_thumbnail_url(url))
